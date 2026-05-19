@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  scraper:
+    build: .
+    container_name: fyn-scraper
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    command: python main.py --source linkedin --max 50
