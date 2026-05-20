@@ -17,25 +17,18 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 \
     libxrandr2 \
     libgbm1 \
-    libasound2 \
-    && rm -rf /var/lib/apt/lists/*
+    libasound2
 
 # Dossier de travail dans le conteneur
 WORKDIR /app
 
 # Copie et installe les dépendances Python
-COPY requirements.txt .
+COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Installe Chromium pour Playwright
 RUN playwright install chromium
 RUN playwright install-deps chromium
 
-# Copie tout le code
-COPY . .
-
-# Crée le dossier logs
-RUN mkdir -p logs
-
 # Commande par défaut
-CMD ["python", "main.py", "--source", "linkedin", "--max", "50"]
+ENTRYPOINT [ "python", "main.py" ]

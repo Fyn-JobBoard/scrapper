@@ -9,3 +9,7 @@ logs/
 .playwright/
 .vscode/
 .idea/
+
+README.md
+Dockerfile
+docker-compose.yml
