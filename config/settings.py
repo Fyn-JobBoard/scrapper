@@ -13,8 +13,8 @@ load_dotenv()
 
 
 # --- API NestJS ---
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:3000")
-API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
+API_HOST = os.getenv("API_HOST", "http://localhost:3000")
+API_JWT = os.getenv("API_JWT", "")
 
 # --- Comportement du scraper ---
 SCRAPER_DELAY = float(os.getenv("SCRAPER_DELAY", 2))          # secondes entre chaque requête
