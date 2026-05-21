@@ -1,5 +1,5 @@
 # Image Python 3.13 légère
-FROM python:3.13-slim
+FROM python:3.13-slim AS prod
 
 # Installe les dépendances système nécessaires à Playwright/Chromium
 RUN apt-get update && apt-get install -y \
