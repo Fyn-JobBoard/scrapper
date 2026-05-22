@@ -9,12 +9,17 @@ Chaque offre est envoyée individuellement avec gestion des erreurs et des doubl
 
 from typing import Optional
 from datetime import datetime
+from string import ascii_letters, digits, punctuation
+from secrets import choice
+from random import randint
 import re
 import httpx
 
 from scrapers.base_scraper import JobOffer
 from config.settings import API_HOST, API_JWT
 from utils.logger import logger
+
+VALID_PASSWORD_CHARS = ascii_letters, digits, punctuation
 
 
 class FynApiClient:
@@ -23,6 +28,39 @@ class FynApiClient:
     Utilise httpx (async-compatible, plus moderne que requests).
     """
     __VERSION = 1
+
+    @staticmethod
+    def _get_company_email(name: str):
+        return f"{name.lower().replace(' ', '.')}@scraper.fyn.com"
+
+    @staticmethod
+    def _get_new_company_logins(name: str):
+        """Génère un objet {email, password} valide pour l'API en fonction du nom de l'entreprise
+
+        Args:
+            name (str): Le nom de l'entreprise à qui créer les identifiants
+
+        Returns:
+            {
+                "email": "<name>@scraper.fyn.com",
+                "password": "(7+ chars, 1+ symbole, 1+ chiffre)"
+            }
+        """
+        email = FynApiClient._get_company_email(name)
+
+        password = ""
+        size = randint(7, 12)
+        while (
+            not password
+            or not any(c.isdigit() for c in password)
+            or not any(c in punctuation for c in password)
+        ):
+            password = ''.join(
+                choice(VALID_PASSWORD_CHARS)
+                for _ in range(size)
+            )
+
+        return {"email": email, "password": password}
 
     def __init__(self):
         self.base_url = API_HOST.rstrip("/") + f"/v{self.__VERSION}"
@@ -127,9 +165,11 @@ class FynApiClient:
     def _build_payload(self, offer: JobOffer) -> dict:
         """Construis le payload conforme au schema CreateJobDto de l'API Fyn."""
         remuneration, remuneration_period = self._map_remuneration_period(
-            offer.salary)
+            offer.salary
+        )
         period_duration, min_formation_duration = self._parse_duration(
-            offer.duration)
+            offer.duration
+        )
 
         payload = {
             "title": offer.title,
@@ -138,16 +178,16 @@ class FynApiClient:
             # Par défaut français, à adapter si nécessaire
             "languages": ["fr"],
             "mode": self._map_mode(offer.location),
-            "scrapped_from": offer.source,
+            "scrapped_from": offer.url,
             "remuneration": remuneration if remuneration is not None else 0,
             "remuneration_period": remuneration_period,
             "contract": self._map_contract_type(offer.contract_type),
             "period_start": offer.posted_at if offer.posted_at else None,
             # 6 mois par défaut
             "period_duration": period_duration if period_duration is not None else 6,
-            "min_formation_duration":
-                min_formation_duration if min_formation_duration is not None else 0,
+            "min_formation_duration": min_formation_duration,
             "active": True,
+            "activity_domain_id": self._get_or_create_activity_domain(offer.company),
             "moderation_feedback": None,
         }
 
@@ -180,7 +220,8 @@ class FynApiClient:
             with self.client as client:
                 response = client.get(
                     "/accounts/companies",
-                    params={"limit": 1, "search": company_name}
+                    params={"limit": 1,
+                            "search": self._get_company_email(company_name)}
                 )
             if response.status_code == 200:
                 data = response.json()
@@ -241,10 +282,9 @@ class FynApiClient:
                 "name": company_name,
                 "creation_date": datetime.now().isoformat(),
                 "activity_domain_id": activity_domain_id,
-                "scrapped_from": offer.source,
-                "website_url": offer.url,
+                "scrapped_from": offer.url,
             }
-        }
+        } | self._get_new_company_logins(company_name)
 
         try:
             with self.client as client:

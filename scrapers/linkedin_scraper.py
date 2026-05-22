@@ -10,6 +10,8 @@ Stratégie :
 - On récupère la description depuis le panneau latéral ou la page détail
 """
 
+from urllib.parse import urlparse, urljoin
+
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from bs4 import BeautifulSoup
 
@@ -37,7 +39,8 @@ class LinkedInScraper(BaseScraper):
         Point d'entrée principal.
         Lance Playwright, fait défiler la liste d'offres et collecte les données.
         """
-        logger.info(f"[LinkedIn] Démarrage du scraping — mots-clés: '{self.filters.keywords}', lieu: '{self.filters.location}'")
+        logger.info(
+            f"[LinkedIn] Démarrage du scraping — mots-clés: '{self.filters.keywords}', lieu: '{self.filters.location}'")
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=PLAYWRIGHT_HEADLESS)
@@ -53,9 +56,11 @@ class LinkedInScraper(BaseScraper):
 
             try:
                 page.goto(url, timeout=15000)
-                page.wait_for_selector(".jobs-search__results-list", timeout=12000)
+                page.wait_for_selector(
+                    ".jobs-search__results-list", timeout=12000)
             except PlaywrightTimeout:
-                logger.error("[LinkedIn] Impossible de charger la page de résultats")
+                logger.error(
+                    "[LinkedIn] Impossible de charger la page de résultats")
                 browser.close()
                 return []
 
@@ -75,7 +80,8 @@ class LinkedInScraper(BaseScraper):
 
                 if self._is_relevant(offer):
                     self.offers.append(offer)
-                    logger.info(f"[LinkedIn] ✓ Offre ajoutée : {offer.title} — {offer.company}")
+                    logger.info(
+                        f"[LinkedIn] ✓ Offre ajoutée : {offer.title} — {offer.company}")
                 else:
                     logger.debug(f"[LinkedIn] ✗ Offre ignorée : {offer.title}")
 
@@ -83,7 +89,8 @@ class LinkedInScraper(BaseScraper):
 
             browser.close()
 
-        logger.success(f"[LinkedIn] Scraping terminé — {len(self.offers)} offres collectées")
+        logger.success(
+            f"[LinkedIn] Scraping terminé — {len(self.offers)} offres collectées")
         return self.offers
 
     # -------------------------------------------------------------------------
@@ -135,13 +142,16 @@ class LinkedInScraper(BaseScraper):
                 if not title_el or not link_el:
                     continue
 
+                url = link_el.get("href", "")
+                url = urljoin(url, urlparse(url).path)
+
                 offer = JobOffer(
                     title=title_el.text,
                     company=company_el.text if company_el else "Non précisé",
                     location=location_el.text if location_el else self.filters.location,
                     contract_type=detect_contract_type(title_el.text),
                     source="linkedin",
-                    url=link_el.get("href", ""),
+                    url=url,
                     posted_at=date_el.get("datetime") if date_el else None,
                 )
                 offers.append(offer)
@@ -161,7 +171,8 @@ class LinkedInScraper(BaseScraper):
 
         try:
             page.goto(offer.url, timeout=12000)
-            page.wait_for_selector(".show-more-less-html__markup", timeout=8000)
+            page.wait_for_selector(
+                ".show-more-less-html__markup", timeout=8000)
 
             html = page.content()
             soup = BeautifulSoup(html, "lxml")
@@ -173,18 +184,21 @@ class LinkedInScraper(BaseScraper):
             # Récupère le type de contrat depuis la section critères LinkedIn
             criteria = soup.select(".description__job-criteria-item")
             for item in criteria:
-                label_el = item.select_one(".description__job-criteria-subheader")
+                label_el = item.select_one(
+                    ".description__job-criteria-subheader")
                 value_el = item.select_one(".description__job-criteria-text")
                 if label_el and value_el:
                     label = label_el.text.strip().lower()
                     value = value_el.text.strip()
                     if "type" in label:
-                        offer.contract_type = detect_contract_type(value, offer.description)
+                        offer.contract_type = detect_contract_type(
+                            value, offer.description)
                     if "durée" in label or "duration" in label:
                         offer.duration = value
 
         except PlaywrightTimeout:
-            logger.warning(f"[LinkedIn] Timeout sur la page détail : {offer.url}")
+            logger.warning(
+                f"[LinkedIn] Timeout sur la page détail : {offer.url}")
         except Exception as e:
             logger.warning(f"[LinkedIn] Erreur description : {e}")
 
