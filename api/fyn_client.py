@@ -7,8 +7,10 @@ L'API attend les offres en POST sur /v1/jobs selon le schema OpenAPI.
 Chaque offre est envoyée individuellement avec gestion des erreurs et des doublons.
 """
 
-import httpx
 from typing import Optional
+from datetime import datetime
+import re
+import httpx
 
 from scrapers.base_scraper import JobOffer
 from config.settings import API_HOST, API_JWT
@@ -31,6 +33,8 @@ class FynApiClient:
 
     @property
     def client(self) -> httpx.Client:
+        """Return a new httpx Client with correct authorization & base url
+        """
         return httpx.Client(
             base_url=self.base_url,
             headers=self.headers,
@@ -76,7 +80,6 @@ class FynApiClient:
             period = "annualy"
 
         # Extraire le montant numérique
-        import re
         amounts = re.findall(r'[\d,]+(\.\d+)?', salary)
         if amounts:
             # Prendre le premier montant trouvé et le convertir en float
@@ -102,9 +105,6 @@ class FynApiClient:
         period_duration = None
         # min_formation_duration: durée minimale de formation requise en mois
         min_formation_duration = None
-
-        # Essayer de trouver des nombres suivis de "mois" ou "months"
-        import re
 
         # Chercher des patterns comme "3 mois", "6 months", "12m", etc.
         month_patterns = re.findall(
@@ -145,9 +145,9 @@ class FynApiClient:
             "period_start": offer.posted_at if offer.posted_at else None,
             # 6 mois par défaut
             "period_duration": period_duration if period_duration is not None else 6,
-            "min_formation_duration": min_formation_duration if min_formation_duration is not None else 0,
+            "min_formation_duration":
+                min_formation_duration if min_formation_duration is not None else 0,
             "active": True,
-            "activity_domain_id": 1,  # ID par défaut, à adapter selon la logique métier
             "moderation_feedback": None,
         }
 
@@ -155,18 +155,147 @@ class FynApiClient:
         # Mais certains champs sont requis, donc on garde les valeurs par défaut
         return payload
 
+    def _job_exists(self, offer: JobOffer) -> bool:
+        """Vérifie si une offre avec le même titre existe déjà dans l'API."""
+        try:
+            with self.client as client:
+                response = client.get(
+                    "/jobs",
+                    params={"limit": 1, "search": offer.title}
+                )
+            if response.status_code == 200:
+                data = response.json()
+                # Si la liste n'est pas vide, l'offre existe
+                return len(data.get("list", [])) > 0
+            return False
+        except Exception as e:
+            logger.warning(
+                f"[API] Erreur lors de la vérification de l'offre : {e}")
+            # En cas d'erreur, on considère que l'offre n'existe pas pour éviter de bloquer
+            return False
+
+    def _company_exists(self, company_name: str) -> Optional[str]:
+        """Recherche une entreprise par nom. Retourne son ID si trouvée, None sinon."""
+        try:
+            with self.client as client:
+                response = client.get(
+                    "/accounts/companies",
+                    params={"limit": 1, "search": company_name}
+                )
+            if response.status_code == 200:
+                data = response.json()
+                companies = data.get("list", [])
+                if companies:
+                    return companies[0].get("id")
+            return None
+        except Exception as e:
+            logger.warning(
+                f"[API] Erreur lors de la recherche de l'entreprise {company_name} : {e}")
+            return None
+
+    def _get_or_create_activity_domain(self, domain_name: str) -> int:
+        """Trouve ou crée un domaine d'activité. Retourne son ID."""
+        try:
+            with self.client as client:
+                # Rechercher le domaine
+                response = client.get(
+                    "/activity-domains",
+                    params={"limit": 1, "query": domain_name}
+                )
+            if response.status_code == 200:
+                data = response.json()
+                domains = data.get("list", [])
+                if domains:
+                    return domains[0].get("id", 1)
+
+            # Créer le domaine s'il n'existe pas
+            try:
+                response = client.post(
+                    "/activity-domains",
+                    json={"name": domain_name}
+                )
+                if response.status_code in (200, 201):
+                    return response.json().get("id", 1)
+            except Exception as e:
+                logger.warning(
+                    f"[API] Erreur lors de la création du domaine {domain_name} : {e}")
+
+            # Fallback
+            return 1
+        except Exception as e:
+            logger.warning(
+                f"[API] Erreur lors de la recherche du domaine {domain_name} : {e}")
+            return 1
+
+    def _create_company(self, company_name: str, offer: JobOffer) -> Optional[str]:
+        """Crée une nouvelle entreprise avec les informations de l'offre."""
+        # Extraire un nom de domaine à partir du nom de l'entreprise
+        # On utilise une logique simple : premier mot ou nom complet
+        domain_name = company_name.split()[0] if company_name else "Inconnu"
+
+        # Obtenir l'ID du domaine d'activité
+        activity_domain_id = self._get_or_create_activity_domain(domain_name)
+
+        payload = {
+            "company": {
+                "name": company_name,
+                "creation_date": datetime.now().isoformat(),
+                "activity_domain_id": activity_domain_id,
+                "scrapped_from": offer.source,
+                "website_url": offer.url,
+            }
+        }
+
+        try:
+            with self.client as client:
+                response = client.post("/accounts", json=payload)
+            if response.status_code in (200, 201):
+                company_data = response.json()
+                logger.debug(f"[API] ✓ Entreprise créée : {company_name}")
+                return company_data.get("id")
+            else:
+                logger.warning(
+                    f"[API] ✗ Erreur {response.status_code} lors de la création de l'entreprise {company_name} : {response.text}"
+                )
+                return None
+        except Exception as e:
+            logger.error(
+                f"[API] Erreur lors de la création de l'entreprise {company_name} : {e}")
+            return None
+
     def send_offer(self, offer: JobOffer) -> bool:
         """
         Envoie une offre unique à l'API NestJS.
+
+        Logique:
+        1. Vérifie que l'offre n'existe pas déjà
+        2. Trouve ou crée l'entreprise associée
+        3. Envoie l'offre avec l'ID de l'entreprise
+
         Retourne True si l'envoi est réussi, False sinon.
         """
+        # 1. Vérifier que l'offre n'existe pas déjà
+        if self._job_exists(offer):
+            logger.debug(f"[API] ~ Offre existe déjà : {offer.title}")
+            return True
+
+        # 2. Trouver ou créer l'entreprise
+        company_id = self._company_exists(offer.company)
+        if not company_id:
+            company_id = self._create_company(offer.company, offer)
+            if not company_id:
+                logger.error(
+                    f"[API] ✗ Impossible de créer l'entreprise pour {offer.title}")
+                return False
+
+        # 3. Envoyer l'offre
         payload = self._build_payload(offer)
 
         try:
             with self.client as client:
-                response = client.post("/jobs", json=payload)
+                response = client.post(f"/jobs/{company_id}", json=payload)
 
-            if response.status_code == 200:
+            if response.status_code in (200, 201):
                 logger.debug(f"[API] ✓ Offre créée : {offer.title}")
                 return True
 
