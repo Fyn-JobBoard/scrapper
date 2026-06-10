@@ -5,4 +5,5 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
-    command: ["--max", "10"]
+    command: ["--max", "1"]
+    network_mode: host
