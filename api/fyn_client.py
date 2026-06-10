@@ -251,10 +251,11 @@ class FynApiClient:
 
             # Créer le domaine s'il n'existe pas
             try:
-                response = client.post(
-                    "/activity-domains",
-                    json={"name": domain_name}
-                )
+                with self.client as client:
+                    response = client.post(
+                        "/activity-domains",
+                        json={"name": domain_name}
+                    )
                 if response.status_code in (200, 201):
                     return response.json().get("id", 1)
             except Exception as e:
@@ -292,7 +293,7 @@ class FynApiClient:
             if response.status_code in (200, 201):
                 company_data = response.json()
                 logger.debug(f"[API] ✓ Entreprise créée : {company_name}")
-                return company_data.get("id")
+                return company_data.get("account", {}).get("id")
             else:
                 logger.warning(
                     f"[API] ✗ Erreur {response.status_code} lors de la création de l'entreprise {company_name} : {response.text}"
