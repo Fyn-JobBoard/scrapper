@@ -8,7 +8,7 @@ Les offres collectées sont envoyées automatiquement à l'API NestJS de Fyn pou
 
 ---
 
-##  Structure du projet
+## Structure du projet
 
 ```
 fyn-scraper/
@@ -110,11 +110,9 @@ MAX_OFFERS_PER_RUN=100                  # Limite d'offres par session
 PLAYWRIGHT_HEADLESS=true                # Mettre false pour voir le navigateur s'ouvrir
 ```
 
-> ⚠️ Ne jamais commiter le fichier `.env` — il est dans le `.gitignore`.
-
 ---
 
-##  Utilisation
+## Utilisation
 
 ### Tester sans envoyer à l'API (recommandé pour commencer)
 
@@ -140,6 +138,34 @@ python main.py --source linkedin --keywords "développeur web stage" --location 
 python main.py
 ```
 
+---
+
+## 🐳 Utilisation avec Docker
+
+Le projet inclut un `Dockerfile` et un `docker-compose.yml` pour faciliter le déploiement.
+
+```bash
+# Build le projet
+docker build -t fyn-scraper:latest .
+
+# Tester sans envoyer à l'API
+docker run fyn-scraper:latest --no-api --max 5
+
+# Scraper LinkedIn uniquement
+docker run fyn-scraper:latest --source linkedin
+
+# Scraper avec des filtres personnalisés
+docker run fyn-scraper:latest --source linkedin --keywords "développeur web stage" --location Paris --max 30
+```
+
+> ⚠️ **Si l'API NestJS tourne déjà sur votre machine host** : ajoutez `--network host` pour que le conteneur Docker ait accès à l'API sur `localhost` :
+>
+> ```bash
+> docker run --network host fyn-scraper:latest --source linkedin --max 10
+> ```
+
+---
+
 ## 🔗 Format d'envoi à l'API NestJS
 
 Chaque offre est envoyée en **POST** sur `/offers` avec ce corps JSON :
@@ -162,12 +188,12 @@ Chaque offre est envoyée en **POST** sur `/offers` avec ce corps JSON :
 
 ### Codes de réponse attendus côté NestJS
 
-| Code | Signification |
-|------|---------------|
-| `201 Created` | Offre créée avec succès |
-| `409 Conflict` | Doublon — offre déjà présente en base |
-| `401 Unauthorized` | Clé API incorrecte |
-| `500` | Erreur serveur NestJS |
+| Code               | Signification                         |
+| ------------------ | ------------------------------------- |
+| `201 Created`      | Offre créée avec succès               |
+| `409 Conflict`     | Doublon — offre déjà présente en base |
+| `401 Unauthorized` | Clé API incorrecte                    |
+| `500`              | Erreur serveur NestJS                 |
 
 ---
 
@@ -178,26 +204,25 @@ Chaque offre est envoyée en **POST** sur `/offers` avec ce corps JSON :
 Indeed protège agressivement son site contre le scraping automatique depuis 2024. Le scraper Indeed est présent dans le code mais retourne 0 résultats car Indeed bloque les requêtes avec un code 403.
 
 **Solutions envisagées pour la production :**
+
 - **Indeed Publisher API** (officielle et gratuite) : https://ads.indeed.com/jobroll/xmlfeed
 - **ScraperAPI** ou **BrightData** (services tiers payants) pour contourner le blocage
 
-### LinkedIn — fonctionnel 
+### LinkedIn — fonctionnel
 
 Le scraper LinkedIn cible les offres publiques accessibles sans compte. Il fonctionne correctement en local (testé : 5 offres récupérées en ~90 secondes).
 
+## Stack technique
 
-
-##  Stack technique
-
-| Outil | Rôle |
-|-------|------|
-| Python 3.13 | Langage principal |
-| Playwright | Navigation et rendu JavaScript |
-| BeautifulSoup4 | Parsing HTML |
-| httpx | Requêtes HTTP vers l'API NestJS |
-| requests | Requêtes HTTP simples (Indeed) |
-| loguru | Logs colorés en console + fichier rotatif |
-| python-dotenv | Gestion des variables d'environnement |
+| Outil          | Rôle                                      |
+| -------------- | ----------------------------------------- |
+| Python 3.13    | Langage principal                         |
+| Playwright     | Navigation et rendu JavaScript            |
+| BeautifulSoup4 | Parsing HTML                              |
+| httpx          | Requêtes HTTP vers l'API NestJS           |
+| requests       | Requêtes HTTP simples (Indeed)            |
+| loguru         | Logs colorés en console + fichier rotatif |
+| python-dotenv  | Gestion des variables d'environnement     |
 
 ---
 
@@ -213,5 +238,5 @@ fyn-scraper (Python)
   API NestJS  ──────────────►  PostgreSQL
        │
        │
-  fyn-frontend 
+  fyn-frontend
 ```
