@@ -1,9 +1,6 @@
 services:
   scraper:
     build: .
-    env_file:
-      - .env
     volumes:
       - ./logs:/app/logs
     command: ["--max", "1"]
-    network_mode: host
