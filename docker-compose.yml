@@ -1,6 +1,9 @@
 services:
   scraper:
     build: .
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ./logs:/app/logs
     command: ["--max", "1"]
