@@ -247,27 +247,25 @@ class FynApiClient:
                 data = response.json()
                 domains = data.get("list", [])
                 if domains:
-                    return domains[0].get("id", 1)
+                    return domains[0].get("id")
 
             # Créer le domaine s'il n'existe pas
             try:
                 with self.client as client:
                     response = client.post(
                         "/activity-domains",
-                        json={"name": domain_name}
+                        json={"name": domain_name},
                     )
                 if response.status_code in (200, 201):
-                    return response.json().get("id", 1)
-            except Exception as e:
-                logger.warning(
-                    f"[API] Erreur lors de la création du domaine {domain_name} : {e}")
+                    domain = response.json()
+                    return domain.get("id")
 
-            # Fallback
-            return 1
-        except Exception as e:
-            logger.warning(
+            except httpx.HTTPError as e:
+                logger.error(
+                    f"[API] Erreur lors de la création du domaine {domain_name} : {e}")
+        except httpx.HTTPError as e:
+            logger.error(
                 f"[API] Erreur lors de la recherche du domaine {domain_name} : {e}")
-            return 1
 
     def _create_company(self, company_name: str, offer: JobOffer) -> Optional[str]:
         """Crée une nouvelle entreprise avec les informations de l'offre."""
@@ -277,6 +275,10 @@ class FynApiClient:
 
         # Obtenir l'ID du domaine d'activité
         activity_domain_id = self._get_or_create_activity_domain(domain_name)
+        if activity_domain_id is None:
+            logger.error(
+                f"Unable to get the activity domain for '{domain_name}'.")
+            return None
 
         payload = {
             "company": {

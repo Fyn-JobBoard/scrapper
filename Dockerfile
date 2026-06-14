@@ -21,14 +21,16 @@ RUN apt-get update && apt-get install -y \
 
 # Dossier de travail dans le conteneur
 WORKDIR /app
-
-# Copie et installe les dépendances Python
-COPY . .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
 
 # Installe Chromium pour Playwright
+RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 RUN playwright install-deps chromium
+
+# Copie et installe les dépendances Python
+# Le fait de copier après l'installation permet une meilleur mise en cache
+COPY . .
 
 # Commande par défaut
 ENTRYPOINT [ "python", "main.py" ]
