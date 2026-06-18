@@ -81,7 +81,7 @@ class LinkedInScraper(BaseScraper):
                 if self._is_relevant(offer):
                     self.offers.append(offer)
                     logger.info(
-                        f"[LinkedIn] ✓ Offre trouvée : {offer.title} — {offer.company}")
+                        f"[LinkedIn] ✓ Offre trouvée : {offer.title} — {offer.company} ({offer.url})")
                 else:
                     logger.debug(f"[LinkedIn] ✗ Offre ignorée : {offer.title}")
 

@@ -395,7 +395,7 @@ class FynApiClient:
         """
         try:
             with self.client as client:
-                response = client.get("/")
+                response = client.get("/accounts/me")
             ok = response.status_code == 200
 
             if ok:
