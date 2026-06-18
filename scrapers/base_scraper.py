@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
+import re
 from utils.helpers import detect_contract_type, clean_text
 
 
@@ -56,10 +57,58 @@ class BaseScraper(ABC):
        
         if offer.contract_type == "inconnu":
             offer.contract_type = detect_contract_type(offer.title, offer.description)
-        return offer.contract_type in self.filters.contract_types
+        return len(offer.title) < 100 and offer.contract_type in self.filters.contract_types
+    
+    def _clean_title(self, title: str) -> str:
+        """
+        Nettoie le titre d'une offre d'emploi en supprimant les informations inutiles.
+        Ex: "Alternance - Juin 2026 - Développeur web fullstack sur Paris" -> "Développeur web fullstack"
+        """
+        cleaned = clean_text(title)
+        
+        # Supprime les types de contrat au début (Alternance, Stage, CDI, CDD, etc.)
+        contract_patterns = [
+            r'^(alternance|stage|cdi|cdd|intérim|freelance|apprentissage|contrat pro)\s*[-–—:]?\s*',
+            r'^(en|un|une)\s+(alternance|stage|cdi|cdd|intérim|freelance|apprentissage)\s*[-–—:]?\s*'
+        ]
+        for pattern in contract_patterns:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        
+        # Supprime les dates (mois + année ou année seule)
+        months = 'janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre|janv\.?|févr\.?|avr\.?|juil\.?|août|sept\.?|oct\.?|nov\.?|déc\.?'
+        date_patterns = [
+            rf'\b({months}\s+\d{{4}})\b',
+            rf'\b({months})\s+\d{{4}}$,'
+        ]
+        for pattern in date_patterns:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        
+        # Supprime les informations de localisation à la fin (sur Paris, à Lyon, etc.)
+        location_patterns = [
+            r'\s+sur\s+\w+$',
+            r'\s+[àaA]\s+\w+$',
+            r'\s+-\s*\w+$',
+        ]
+        for pattern in location_patterns:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        
+        # Supprime les mots isolés à la fin qui ressemblent à des villes françaises communes
+        common_cities = r'Paris|Lyon|Marseille|Toulouse|Nice|Nantes|Montpellier|Strasbourg|Bordeaux|Lille|Rennes|Reims|Le Mans|Amiens|Aix|Grenoble|Toulon|Angers|Dijon|Brest|Le Havre|Saint-Étienne|Limoges|Tours|Clermont-Ferrand'
+        cleaned = re.sub(rf'\s+({common_cities})$', '', cleaned, flags=re.IGNORECASE)
+        
+        # Supprime les tirets et espaces multiples
+        cleaned = re.sub(r'[\s-]+', ' ', cleaned, flags=re.IGNORECASE).strip()
+        
+        # Supprime les tirets ou séparateurs isolés
+        cleaned = re.sub(r'^[\s-]+|[\s-]+$', '', cleaned, flags=re.IGNORECASE)
+        
+        # Supprime les parenthèses vides
+        cleaned = re.sub(r'\s*\(\s*\)\s*', '', cleaned, flags=re.IGNORECASE)
+        
+        return cleaned
     
     def _clean_offer(self, offer: JobOffer) -> JobOffer:
-        offer.title = clean_text(offer.title)
+        offer.title = self._clean_title(offer.title)
         offer.company = clean_text(offer.company)
         offer.location = clean_text(offer.location)
         offer.description = clean_text(offer.description)
